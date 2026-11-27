@@ -93,6 +93,7 @@
     }
     .pose-visual svg { width: 100%; height: 100%; display: block; }
     .pose-visual::after { display: none; }
+    .pose-visual video { width: 100%; height: 100%; object-fit: cover; display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .pose-title { font-family: 'Outfit'; font-size: 24px; font-weight: 700; }
     html[dir="rtl"] .pose-title { font-family: 'Heebo'; }
@@ -454,10 +455,23 @@ const FIG = (() => {
   const build = key => wrap(key, body(key, 0));
 
   // ---- animation ----
-  let raf = 0, t0 = 0, paused = false;
-  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
-  function setPaused(v) { paused = v; }
+  let raf = 0, t0 = 0, paused = false, curVid = null;
+  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; if (curVid) curVid.pause(); }
+  function setPaused(v) { paused = v; if (curVid) { if (v) curVid.pause(); else curVid.play().catch(() => {}); } }
+  const VID = () => (window.POSE_VIDEOS || {});
   function play(el, key) {
+    stop(); curVid = null;
+    const src = VID()[key];
+    if (src) {
+      el.innerHTML = `<video src="${src}" autoplay loop muted playsinline preload="auto"></video>`;
+      const v = el.firstChild; curVid = v;
+      v.onerror = () => { curVid = null; playSvg(el, key); };
+      if (paused) v.pause();
+      return;
+    }
+    playSvg(el, key);
+  }
+  function playSvg(el, key) {
     stop(); el.innerHTML = svg(key);
     const gEl = el.querySelector(".figG"); if (!gEl) return;
     const m = MOT[key] || DEF, T = 4200; let acc = 0, last = performance.now();
@@ -485,6 +499,7 @@ const FIG = (() => {
 })();
 function poseSVG(key) { return FIG.svg(key); }
 
+    window.POSE_VIDEOS = { 'forward-fold': 'videos/forward-fold.mp4' };
     const IC = {
       prev:'<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>',
       next:'<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg>',
