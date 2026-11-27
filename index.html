@@ -246,9 +246,9 @@
     <div id="player" class="screen">
       <div class="player">
         <div class="p-top">
-          <button class="icon-btn" onclick="exitPlayer()">✕</button>
+          <button class="icon-btn" id="closeBtn" onclick="exitPlayer()" aria-label="close"></button>
           <div class="p-bar"><div class="p-fill" id="pFill" style="width:0%"></div></div>
-          <button class="icon-btn" id="voiceBtn" onclick="toggleVoice()">🔊</button>
+          <button class="icon-btn" id="voiceBtn" onclick="toggleVoice()" aria-label="voice"></button>
         </div>
         <div class="pose-stage">
           <div class="pose-visual" id="pVisual"></div>
@@ -259,9 +259,9 @@
         </div>
         <div class="steps" id="pSteps"></div>
         <div class="controls">
-          <button class="cbtn" onclick="prev()">⏮</button>
-          <button class="cbtn play" id="playBtn" onclick="toggle()">▶</button>
-          <button class="cbtn" onclick="next()">⏭</button>
+          <button class="cbtn" id="prevBtn" onclick="prev()" aria-label="previous"></button>
+          <button class="cbtn play" id="playBtn" onclick="toggle()" aria-label="play"></button>
+          <button class="cbtn" id="nextBtn" onclick="next()" aria-label="next"></button>
         </div>
       </div>
     </div>
@@ -368,46 +368,134 @@ const FIG = (() => {
   def('knee-chest', { ...LY, N: { t: -145, s: 30, f: 60, u: -30, a: 40, h: 60 }, F: { t: 0, s: 0, f: -78, u: 12, a: 6, h: 0 } });
   def('both-knees', { ...LY, N: { t: -145, s: 30, f: 60, u: -30, a: 40, h: 60 }, F: { t: -148, s: 28, f: 60, u: -28, a: 42, h: 60 } });
 
-  function build(key, opt) {
-    const p = P[key] || P.breath;
-    const N = { ...ST, ...p.N }, F = { ...ST, ...N, ...(p.F || {}) };
-    const hip = [0, 0], mid = pt(hip, L.sp, p.s[0]), sh = pt(mid, L.sp, p.s[1]), headC = pt(sh, L.hd, p.n);
-    const J = { hip, mid, sh, head: headC };
-    const nj = limb(hip, sh, N), fj = limb(hip, sh, F);
-    const JN = { ...J, ...nj }, JF = { ...J, ...fj };
-    // bbox with pads
-    const pts = [[hip, 10.5], [mid, 8.5], [sh, 9.5], [headC, 10]];
-    [nj, fj].forEach(j => { pts.push([j.knee, 6.6], [j.ank, 4], [j.toe, 3], [j.el, 4], [j.wr, 3], [j.hand, 2.4]); });
+  // ---- motion: deltas added at full amplitude (e = 0..1, or -1..1 when sym) ----
+  const DEF = { s: [0, -3], n: -2, N: { u: -4, a: -4 } };
+  const MOT = {
+    'breath': { s: [0, -3], n: -3, N: { u: -140, a: -136, h: -134 }, F: { u: -140, a: -136, h: -134 } },
+    'neck-roll': { n: -96, hr: 0 },
+    'shoulder-roll': { N: { u: 24, a: 12 }, F: { u: -20, a: -10 }, sym: true },
+    'chin': { n: -8, N: { a: 6 } },
+    'reach': { s: [-4, -8], n: -8, N: { u: -6, a: -4 } },
+    'side': { s: [12, 22], n: 32, N: { u: 28, a: 22, h: 20 }, F: { u: 30, a: 24, h: 22 } },
+    'chest': { s: [0, -6], n: -6, N: { u: 14, a: 10 }, F: { u: 14, a: 10 } },
+    'cactus': { N: { u: 22, a: -4 }, F: { u: 14, a: -4 } },
+    'blade': { N: { u: 24, a: -24, h: -24 }, F: { u: 24, a: -24, h: -24 } },
+    'upperback': { s: [0, -10], n: -8, N: { u: -20 }, F: { u: -20 } },
+    'quad': { s: [-2, -4], N: { s: -12, f: -10 }, F: { u: -14, a: -10 } },
+    'side-neck': { n: 34, N: { u: 6 } },
+    'trap': { n: 26, N: { u: 6 } },
+    'doorway': { s: [6, 8], n: 6, N: { t: 4 }, F: { t: -4 } },
+    'wide-fold': { s: [16, 14], n: 8, N: { u: 10, a: 8 }, F: { u: 10, a: 8 } },
+    'forward-fold': { s: [16, 14], n: 8, N: { u: 10, a: 6 }, F: { u: 10, a: 6 } },
+    'twist': { s: [3, 3], n: 10, F: { u: 12, a: 10 } },
+    'catcow': { s: [-14, 24], n: 38, N: { u: 4, a: 4 } },
+    'seated-fold': { s: [30, 26], n: 6, N: { u: 4, a: 8 } },
+    'butterfly': { s: [22, 20], n: 14, N: { t: 12, u: 10 }, F: { t: 10, u: 10 } },
+    'child': { s: [-5, 2], n: 2, N: { u: 3 } },
+    'lunge': { s: [-6, -10], n: -8, N: { u: -6 }, F: { u: -6 } },
+    'runner': { s: [8, 6], n: 6, N: { t: -6 }, F: { t: -4 } },
+    'pigeon': { s: [30, 32], n: 26, N: { u: -40, a: -50, h: -10 }, F: { u: -40, a: -50, h: -10 } },
+    'frog': { N: { t: -16 }, F: { t: -16 }, s: [4, 2] },
+    'floor-cat': { s: [-22, 24], n: 62, N: {}, F: {} },
+    'downdog': { N: { t: 14, s: -6 }, F: { t: -14, s: 6 }, sym: true },
+    'cobra': { s: [-4, -10], n: -6, N: { u: -4 }, F: { u: -4 } },
+    'savasana': { s: [0, -3], n: 0, N: { u: 3 } },
+    'legs-wall': { N: { f: -50 }, F: { f: -46 } },
+    'happy': { N: { t: 12, s: 6, u: 8 }, F: { t: 12, s: 6, u: 8 } },
+    'supine-twist': { N: { t: 28, s: -28 }, F: { t: 28, s: -28 } },
+    'fig4': { N: { t: -10, u: -12, a: -6 }, F: { t: -16, u: -12, a: -6 } },
+    'knee-chest': { N: { t: -12, s: 10, u: -8, a: 6 } },
+    'both-knees': { N: { t: -12, s: 8, u: -8, a: 6 }, F: { t: -12, s: 8, u: -8, a: 6 } }
+  };
+
+  function geom(key, e) {
+    const p = P[key] || P.breath, m = MOT[key] || DEF;
+    const d = (v, dv) => v + (dv || 0) * e;
+    const sp = [d(p.s[0], m.s && m.s[0]), d(p.s[1], m.s && m.s[1])], n = d(p.n, m.n);
+    const N0 = { ...ST, ...p.N }, F0 = { ...ST, ...N0, ...(p.F || {}) };
+    const N = {}, F = {};
+    Object.keys(ST).forEach(k => {
+      N[k] = d(N0[k], m.N && m.N[k]);
+      const fd = m.F && m.F[k] !== undefined ? m.F[k] : (m.N && m.N[k]);
+      F[k] = d(F0[k], fd);
+    });
+    const hip = [0, 0], mid = pt(hip, L.sp, sp[0]), sh = pt(mid, L.sp, sp[1]), headC = pt(sh, L.hd, n);
+    const hrBase = p.hr !== undefined ? p.hr : P0hr(p);
+    const hr = p.hr !== undefined ? d(p.hr, m.hr) : d(p.n + 90, m.hr !== undefined ? m.hr : m.n);
+    return { p, hip, mid, sh, headC, nj: limb(hip, sh, N), fj: limb(hip, sh, F), hr };
+  }
+  function P0hr(p) { return p.n + 90; }
+  const LAYOUT = {};
+  function layout(key) {
+    if (LAYOUT[key]) return LAYOUT[key];
+    const g = geom(key, 0), pts = [[g.hip, 10.5], [g.mid, 8.5], [g.sh, 9.5], [g.headC, 10]];
+    [g.nj, g.fj].forEach(j => { pts.push([j.knee, 7.4], [j.ank, 4], [j.toe, 3], [j.el, 4], [j.wr, 3], [j.hand, 2.4]); });
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     pts.forEach(([q, r]) => { x0 = Math.min(x0, q[0] - r); x1 = Math.max(x1, q[0] + r); y0 = Math.min(y0, q[1] - r); y1 = Math.max(y1, q[1] + r); });
     const w = x1 - x0, h = y1 - y0;
-    const s = Math.min(1.2, 200 / w, 136 / h), cx = (x0 + x1) / 2;
-    const gy = 160;
-    // props (in figure coords)
-    let prop = '';
-    if (p.prop === 'wall') prop = `<rect x="${f1(x1 + 1)}" y="${f1(y0 - 60)}" width="40" height="${f1(h + 62)}" fill="#e2d4e6"/><rect x="${f1(x1 + 1)}" y="${f1(y0 - 60)}" width="2.2" height="${f1(h + 62)}" fill="#c9b6ce"/>`;
-    if (p.prop === 'door') prop = `<rect x="${f1(x1 + 6)}" y="${f1(y0 - 40)}" width="7" height="${f1(h + 42)}" fill="#d9c9de"/><rect x="${f1(x1 + 13)}" y="${f1(y0 - 40)}" width="40" height="${f1(h + 42)}" fill="#efe6f2"/>`;
-    if (p.prop === 'chair') prop = `<rect x="-16" y="9" width="52" height="5" rx="2" fill="#8b7a94"/><rect x="-12" y="14" width="4" height="${f1(y1 - 14)}" fill="#75647e"/><rect x="28" y="14" width="4" height="${f1(y1 - 14)}" fill="#75647e"/>`;
-    const g = `<g transform="translate(120 ${gy}) scale(${f1(s * 100) / 100}) translate(${f1(-cx)} ${f1(-y1)})">` +
-      prop + arm(JF, true) + leg(JF, true) +
-      capsule(hip, mid, 10, 8, C.cloth, C.edge) + capsule(mid, sh, 8, 9.4, C.cloth, C.edge) +
-      capsule(sh, headC, 3.8, 3.6, C.skin) + head(J, p.hr !== undefined ? p.hr : p.n + 90) +
-      leg(JN, false) + arm(JN, false) + `</g>`;
-    return g;
+    return LAYOUT[key] = { x0, x1, y0, y1, w, h, s: Math.min(1.2, 200 / w, 136 / h), cx: (x0 + x1) / 2 };
   }
-  function svg(key) {
+  function body(key, e) {
+    const g = geom(key, e), Y = layout(key), p = g.p;
+    let prop = '';
+    if (p.prop === 'wall') prop = `<rect x="${f1(Y.x1 + 1)}" y="${f1(Y.y0 - 60)}" width="40" height="${f1(Y.h + 62)}" fill="#e2d4e6"/><rect x="${f1(Y.x1 + 1)}" y="${f1(Y.y0 - 60)}" width="2.2" height="${f1(Y.h + 62)}" fill="#c9b6ce"/>`;
+    if (p.prop === 'door') prop = `<rect x="${f1(Y.x1 + 6)}" y="${f1(Y.y0 - 40)}" width="7" height="${f1(Y.h + 42)}" fill="#d9c9de"/><rect x="${f1(Y.x1 + 13)}" y="${f1(Y.y0 - 40)}" width="40" height="${f1(Y.h + 42)}" fill="#efe6f2"/>`;
+    if (p.prop === 'chair') prop = `<rect x="-16" y="9" width="52" height="5" rx="2" fill="#8b7a94"/><rect x="-12" y="14" width="4" height="${f1(Y.y1 - 14)}" fill="#75647e"/><rect x="28" y="14" width="4" height="${f1(Y.y1 - 14)}" fill="#75647e"/>`;
+    const JN = { hip: g.hip, sh: g.sh, ...g.nj }, JF = { hip: g.hip, sh: g.sh, ...g.fj };
+    return prop + arm(JF, true) + leg(JF, true) +
+      capsule(g.hip, g.mid, 10, 8, C.cloth, C.edge) + capsule(g.mid, g.sh, 8, 9.4, C.cloth, C.edge) +
+      capsule(g.sh, g.headC, 3.8, 3.6, C.skin) + head({ head: g.headC }, g.hr) +
+      leg(JN, false) + arm(JN, false);
+  }
+  function wrap(key, inner) {
+    const Y = layout(key);
+    return `<g class="figG" transform="translate(120 160) scale(${f1(Y.s * 100) / 100}) translate(${f1(-Y.cx)} ${f1(-Y.y1)})">${inner}</g>`;
+  }
+  const build = key => wrap(key, body(key, 0));
+
+  // ---- animation ----
+  let raf = 0, t0 = 0, paused = false;
+  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
+  function setPaused(v) { paused = v; }
+  function play(el, key) {
+    stop(); el.innerHTML = svg(key);
+    const gEl = el.querySelector(".figG"); if (!gEl) return;
+    const m = MOT[key] || DEF, T = 4200; let acc = 0, last = performance.now();
+    const tick = now => {
+      if (!document.body.contains(el)) { raf = 0; return; }
+      const dt = now - last; last = now;
+      if (!paused) acc += dt;
+      const ph = (acc % T) / T * 2 * Math.PI;
+      const e = m.sym ? Math.sin(ph) : 0.5 - 0.5 * Math.cos(ph);
+      gEl.innerHTML = body(key, e);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+  }
+  function svg(key, e = 0) {
     const id = 'g' + Math.random().toString(36).slice(2, 7);
     return `<svg viewBox="0 0 240 180" xmlns="http://www.w3.org/2000/svg" role="img">` +
       `<defs><radialGradient id="${id}" cx="50%" cy="38%" r="75%"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="#f3e8f5"/><stop offset="1" stop-color="#e6d6ea"/></radialGradient></defs>` +
       `<rect width="240" height="180" rx="14" fill="url(#${id})"/>` +
       `<path d="M26 156 L214 156 L234 176 L6 176Z" fill="${C.mat}"/><path d="M26 156 L214 156" stroke="#4a4a56" stroke-width="1.4"/>` +
       `<ellipse cx="120" cy="161" rx="62" ry="3.4" fill="rgba(0,0,0,.28)"/>` +
-      build(key) + `</svg>`;
+      wrap(key, body(key, e)) + `</svg>`;
   }
-  return { svg, keys: () => Object.keys(P) };
+  return { svg, play, stop, setPaused, keys: () => Object.keys(P) };
 })();
 function poseSVG(key) { return FIG.svg(key); }
 
+    const IC = {
+      prev:'<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>',
+      next:'<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg>',
+      play:'<svg viewBox="0 0 24 24" width="30" height="30" fill="#fff"><path d="M8 5v14l11-7z"/></svg>',
+      pause:'<svg viewBox="0 0 24 24" width="30" height="30" fill="#fff"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+      close:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+      vol:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></svg>',
+      mute:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M17 9l5 6M22 9l-5 6"/></svg>'
+    };
+    (function(){const set=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h;};
+      set('closeBtn',IC.close);set('voiceBtn',IC.vol);set('prevBtn',IC.prev);set('playBtn',IC.play);set('nextBtn',IC.next);})();
     // ========== i18n ==========
     const I18N = {
       en: {
@@ -627,7 +715,7 @@ function poseSVG(key) { return FIG.svg(key); }
     function loadPose(){
       const pid=current.poses[idx];
       const p=POSES[pid]||{emoji:"🧘",name:{en:pid,he:pid},side:{en:"Hold",he:"החזקה"},time:30,steps:{en:["Hold"],he:["החזק"]}};
-      document.getElementById("pVisual").innerHTML=poseSVG(pid);
+      FIG.play(document.getElementById("pVisual"),pid);
       document.getElementById("pName").textContent=poseName(p);
       document.getElementById("pSide").textContent=poseSide(p);
       document.getElementById("pSteps").innerHTML=`<strong>${t('how')}</strong><ol>${poseSteps(p).map(s=>`<li>${s}</li>`).join("")}</ol>`;
@@ -636,12 +724,12 @@ function poseSVG(key) { return FIG.svg(key); }
       if(voice)speak(poseName(p)+". "+poseSide(p));
     }
     function updateTimer(){const m=Math.floor(left/60),s=left%60;document.getElementById("pTimer").textContent=m+":"+s.toString().padStart(2,"0");}
-    function toggle(){playing=!playing;document.getElementById("playBtn").textContent=playing?"⏸":"▶";if(playing){timer=setInterval(()=>{left--;updateTimer();if(left<=0){if(idx<current.poses.length-1){idx++;loadPose();}else{clearInterval(timer);playing=false;finish();}}},1000);}else clearInterval(timer);}
+    function toggle(){playing=!playing;document.getElementById("playBtn").innerHTML=playing?IC.pause:IC.play;FIG.setPaused(!playing);if(playing){timer=setInterval(()=>{left--;updateTimer();if(left<=0){if(idx<current.poses.length-1){idx++;loadPose();}else{clearInterval(timer);playing=false;finish();}}},1000);}else clearInterval(timer);}
     function next(){if(idx<current.poses.length-1){idx++;loadPose();}else finish();}
     function prev(){if(idx>0){idx--;loadPose();}}
-    function exitPlayer(){clearInterval(timer);playing=false;go("home");}
+    function exitPlayer(){clearInterval(timer);playing=false;FIG.stop();go("home");}
     function finish(){
-      clearInterval(timer);playing=false;
+      clearInterval(timer);playing=false;FIG.stop();
       const today=new Date().toDateString();
       if(store.lastDate!==today){store.streak=(store.lastDate?store.streak+1:1);store.lastDate=today;}
       store.sessions++;store.minutes+=current.duration||5;store.routines++;
@@ -653,7 +741,7 @@ function poseSVG(key) { return FIG.svg(key); }
       if(voice)speak(lang==='he'?"כל הכבוד. האימון הסתיים.":"Amazing work. Session complete.");
     }
     function closeDone(){document.getElementById("done").classList.remove("show");go("home");renderHome();}
-    function toggleVoice(){voice=!voice;document.getElementById("voiceBtn").textContent=voice?"🔊":"🔇";}
+    function toggleVoice(){voice=!voice;document.getElementById("voiceBtn").innerHTML=voice?IC.vol:IC.mute;}
     function speak(t){if(!voice||!window.speechSynthesis)return;const u=new SpeechSynthesisUtterance(t);u.lang=lang==='he'?'he-IL':'en-US';u.rate=0.95;speechSynthesis.cancel();speechSynthesis.speak(u);}
 
     // ========== Drag & Drop Builder ==========
